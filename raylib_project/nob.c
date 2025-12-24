@@ -267,7 +267,12 @@ bool build_release(void) {
 
 bool build_wasm(void) {
     { // check if the user has emscripten installed
-        TODO("check if the user has emscripten installed");
+        // https://stackoverflow.com/questions/890894/portable-way-to-find-out-if-a-command-exists-c-c
+        if (system("which emcc > /dev/null 2>&1")) {
+            // Command doesn't exist...
+            nob_log(ERROR, "User dose not have access to the 'emcc' command, please install emscripten. (or just dont build the web version)");
+            return false;
+        }
     }
 
     if (!compile_raylib_library("libraylib_web.a", "PLATFORM_WEB")) return false;
