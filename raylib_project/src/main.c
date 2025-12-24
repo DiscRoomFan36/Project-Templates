@@ -1,6 +1,4 @@
 
-#include <time.h>
-
 #include "Bested.h"
 #undef Clamp // TODO we gotta do something about this...
 
