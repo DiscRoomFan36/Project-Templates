@@ -11,7 +11,7 @@ Put description here
 $ cc -o nob nob.c
 
 # compile and run
-$ ./nob && ./build/main_debug
+$ ./nob debug && ./build/main_debug
 ```
 
 ### NOTE
