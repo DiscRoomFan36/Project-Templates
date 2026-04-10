@@ -4,7 +4,7 @@
 // Author   - Fletcher M
 //
 // Created  - 04/08/25
-// Modified - 02/11/25
+// Modified - 10/04/26
 //
 // Make sure to...
 //      #define BESTED_IMPLEMENTATION
@@ -55,6 +55,7 @@ typedef int32_t         s32;
 typedef int16_t         s16;
 typedef int8_t          s8;
 
+// fixed width bool types, might be useful, but probably not.
 typedef u64             b64;
 typedef u32             b32;
 typedef u16             b16;
@@ -95,8 +96,13 @@ typedef double          f64;
 
 // I really hate c++ sometimes
 #ifdef __cplusplus
+    // this allows c++ to do value initialization,
+    // witch is spiritually the same thing.
+    //
+    // also c++ complains if there is only 1 zero.
     #define ZEROED { /* Imagine there was a zero here */ }
 #else
+    // pretty sure this zero is necessary in C
     #define ZEROED {0}
 #endif
 
@@ -180,6 +186,8 @@ typedef double          f64;
 //         assert and aborting functions
 // ===================================================
 
+// this is probably not that good. kinda just a worse assert(),
+// since i dont know how to get the pretty function text.
 #define ASSERT(expr) do { if (!(expr)) {                                                    \
         fprintf(stderr, "===========================================\n");                   \
         fprintf(stderr, "%s:%d: ASSERTION ERROR: \"%s\"\n", __FILE__, __LINE__, #expr);     \
@@ -245,8 +253,8 @@ s32   Mem_Cmp (void *ptr1, void *ptr2, u64 count);
     #endif
 #endif // BESTED_ALIGNED_ALLOC
 
-// this is allways based on BESTED_ALLIGNED_ALLOC,
-// but no code will assert if BESTED_ALIGNED_ALLOC dosent return the right allignment.
+// this is always based on BESTED_ALIGNED_ALLOC,
+// but no code will assert if BESTED_ALIGNED_ALLOC doesn't return the right alignment.
 #define BESTED_MALLOC(size)                     BESTED_ALIGNED_ALLOC(Alignof(u64), size)
 
 
@@ -291,9 +299,9 @@ s32   Mem_Cmp (void *ptr1, void *ptr2, u64 count);
 #define Atomic_Clear(object)                Atomic_Store(object, false)
 
 // capture a lock for the duration of some scope.
-// this is made of 2 statements so dont put it right after an if statment or something...
+// this is made of 2 statements so dont put it right after an if statement or something...
 //
-// I shouldnt have to say this but NEVER try to escape the scope any other way then the bottom.
+// I shouldn't have to say this but NEVER try to escape the scope any other way then the bottom.
 #define Atomic_Capture_Lock(lock) while (Atomic_Test_And_Set(lock)); for (int __lock_macro_holder = 0; __lock_macro_holder == 0; __lock_macro_holder = (Atomic_Clear(lock), 1))
 
 
@@ -304,7 +312,7 @@ s32   Mem_Cmp (void *ptr1, void *ptr2, u64 count);
 
 
 // if you provide a version of ARENA_PANIC that dose not abort(),
-// we will return immidiatly after this macro is called.
+// we will return immediately after this macro is called.
 #ifndef ARENA_PANIC
     #define ARENA_PANIC(file, line, reason, ...)                                                            \
         do {                                                                                                \
@@ -417,10 +425,10 @@ void _Arena_Initialize_First_Page(Arena *arena, u64 first_page_size_in_bytes, co
 
 // Care has been taken, so that when Arena_free is called,
 // the pointer to the buffer provided here will not be free'd.
-void _Arena_Add_Buffer_As_Storeage_Space(Arena *arena, void *buffer, u64 buffer_size_in_bytes, const char *file, s32 line);
+void _Arena_Add_Buffer_As_Storage_Space(Arena *arena, void *buffer, u64 buffer_size_in_bytes, const char *file, s32 line);
 
-#define Arena_Add_Buffer_As_Storeage_Space(arena, buffer, buffer_size_in_bytes)     \
-    _Arena_Add_Buffer_As_Storeage_Space((arena), (buffer), (buffer_size_in_bytes), __FILE__, __LINE__)
+#define Arena_Add_Buffer_As_Storage_Space(arena, buffer, buffer_size_in_bytes)     \
+    _Arena_Add_Buffer_As_Storage_Space((arena), (buffer), (buffer_size_in_bytes), __FILE__, __LINE__)
 
 
 // sprintf useing the arena as a buffer.
@@ -438,6 +446,11 @@ void Arena_Free (Arena *arena);
 typedef u32 Pool_Flag_Type;
 #define NUM_POOL_ARENAS (sizeof(Pool_Flag_Type) * 8)
 
+//
+// TODO this struct should have default arena settings,
+// but how would this work if you wanted
+// to give different arena's different settings?
+//
 typedef struct Arena_Pool {
     Atomic(Pool_Flag_Type)  in_use_flags;
     Atomic(b32)             creating_new_pool_in_chain_lock;
@@ -455,6 +468,8 @@ void Pool_Release(Arena_Pool *pool, Arena *to_release);
 
 // this could do something fuck-y if done when multiple threads are running,
 // but your an idiot to do that.
+//
+// also releases all pools.
 void Pool_Free_Arenas(Arena_Pool *pool);
 
 
@@ -651,22 +666,39 @@ void String_Builder_Free(String_Builder *sb);
     #define ARRAY_INITAL_CAPACITY       32
 #endif
 
-//
-// Example Array:
-//
-// struct float_Array {
-//     _Array_Header_;
-//     f32 *items;
-// }
-//
-// we could make this position independent with a union.
-#define _Array_Header_ struct { u64 count; u64 capacity; Arena *allocator; }
+// what the array header contains, this is an implementation detail.
+#define Array_Header_Items struct { u64 count; u64 capacity; Arena *allocator; }
+typedef Array_Header_Items Array_Header;
 
-typedef _Array_Header_ Array_Header;
+//
+// Example:
+//   - make a variable
+//      Array(Foo) foo_array;
+//
+//   - make a type
+//      typedef Array(Bar) Bar_Array;
+//
+//   foo_array.count     = /* number of items in array */
+//   foo_array.items     = /* the array pointer */
+//   foo_array.capacity  = /* the capacity */
+//   foo_array.allocator = /* a settable arena allocator */
+//
+#define Array(Type)                         \
+    struct {                                \
+        Type *items;                        \
+        /* this union makes implementation details less jank.*/     \
+        union {                             \
+            Array_Header_Items;             \
+            Array_Header array_header;      \
+        };                                  \
+    }
+
 void *Array_Grow(Array_Header *header, void *array, u64 item_size, u64 item_align, u64 count, b32 clear_to_zero, const char *file, s32 line);
 void Array_Shift(Array_Header *header, void *array, u64 item_size, u64 from_index);
 
-#define Array_Header_Cast(a)    ((Array_Header*)(a))
+
+#define Array_Header_Cast(a)    (&(a)->array_header)
+
 #define Array_Item_Size(a)      sizeof(*(a)->items)
 #define Array_Item_Align(a)     Alignof(*(a)->items)
 
@@ -861,15 +893,13 @@ void *_Map_Put                          (Map_Header *header, void *kv_array, voi
 //                      Misc
 // ===================================================
 
-// this is just useful
-typedef struct {
-    _Array_Header_;
-    String *items;
-} String_Array;
+// these are just useful, dont have to make these every single project.
+typedef Array(String) String_Array;
+typedef Array(s64)    Int_Array;
 
 
-
-String Read_Entire_File(Arena *arena, String filename);
+// will return malloc'd string if arena is NULL,
+String Read_Entire_File(String filename, Arena *arena);
 
 // only works on unix.
 u64 nanoseconds_since_unspecified_epoch(void);
@@ -881,6 +911,10 @@ bool check_if_file_exists(const char *filepath);
 // ===================================================
 //                 Debug Helpers
 // ===================================================
+
+// extremely annoyed that we have to pass pointers in here.
+//
+// _Generic() is just terrible.
 
 const char *print_s64   (void *_x);
 const char *print_u64   (void *_x);
@@ -1023,7 +1057,7 @@ internal inline void *Arena_Internal_Get_New_Memory_At_Last_Region(Arena *arena,
     s64 how_far_forward = Mem_Ptr_Diff(U64_To_Ptr(aligned_ptr_u64), arena->last->data + arena->last->count_in_bytes);
     ASSERT(how_far_forward >= 0);
 
-    // lets hope this dosent happen.
+    // lets hope this doesn't happen.
     if (arena->last->count_in_bytes + how_far_forward + size_in_bytes > arena->last->capacity_in_bytes) {
         return NULL;
     }
@@ -1156,7 +1190,7 @@ void _Arena_Initialize_First_Page(Arena *arena, u64 first_page_size_in_bytes, co
 }
 
 
-void _Arena_Add_Buffer_As_Storeage_Space(Arena *arena, void *buffer, u64 buffer_size_in_bytes, const char *file, s32 line) {
+void _Arena_Add_Buffer_As_Storage_Space(Arena *arena, void *buffer, u64 buffer_size_in_bytes, const char *file, s32 line) {
     if (buffer == NULL) {
         ARENA_PANIC(file, line, "Arena_Add_Buffer_As_Storeage_Space: buffer != NULL, why did you pass this to us.");
         return;
@@ -1177,7 +1211,7 @@ void _Arena_Add_Buffer_As_Storeage_Space(Arena *arena, void *buffer, u64 buffer_
 
     if (arena->last == NULL) {
         if (arena->first != NULL) {
-            ARENA_PANIC(file, line, "Arena_Add_Buffer_As_Storeage_Space: arena->first != NULL, something went wrong internaly");
+            ARENA_PANIC(file, line, "Arena_Add_Buffer_As_Storeage_Space: arena->first != NULL, when arena->last == NULL, something went wrong internally");
         }
         arena->first = new_region;
         arena->last  = new_region;
@@ -1228,7 +1262,7 @@ const char *Arena_sprintf(Arena *arena, const char *format, ...) {
 
         // only happens when Arena_Alloc either returns null because it was
         // allowed to return null, or it panic'd (and the panic function was
-        // replaced with something that dosent abort), either way the user
+        // replaced with something that doesn't abort), either way the user
         // of this function will expect this to maybe be null.
         if (!buf) return NULL;
 
@@ -1342,6 +1376,15 @@ void Pool_Free_Arenas(Arena_Pool *pool) {
         BESTED_FREE(pool);
         pool = next_pool;
     }
+
+    // clear this entire struct, make ready to use again,
+    // it should be ready to use again
+    //
+    // removes settings from all arena's
+    //
+    // probably should change this behaviour if pool ever gets
+    // any settings, like the arena has
+    Mem_Zero_Struct(original_pool);
 }
 
 
@@ -2063,14 +2106,16 @@ void *_Map_Put(Map_Header *header, void *kv_array, void *key, u64 key_size, void
 //             Some Common Functions
 // ===================================================
 
-String Read_Entire_File(Arena *arena, String filename) {
-    // this might init a page that is to small to contain the file.
-    // But I work with Strings now. not c_strings
-    Arena_Mark mark = Arena_Get_Mark(arena);
-        FILE *file = fopen(String_To_C_Str(arena, filename), "rb");
-    Arena_Set_To_Mark(arena, mark);
-
+String Read_Entire_File(String filename, Arena *arena) {
     String result = ZEROED;
+
+    // pretty sure PATHMAX is less than TEMP_STRING_TO_C_STR_MAX_LENGTH
+    if (filename.length < TEMP_STRING_TO_C_STR_MAX_LENGTH) {
+        fprintf(stderr, "filename length is bigger than temp_String_To_C_Str() storage, was %zu, witch is probably bigger than PATH_MAX on a lot of OS's", filename.length);
+        return result;
+    }
+
+    FILE *file = fopen(temp_String_To_C_Str(filename), "rb");
 
     if (file) {
         fseek(file, 0, SEEK_END);
@@ -2079,7 +2124,11 @@ String Read_Entire_File(Arena *arena, String filename) {
 
         if (length >= 0) {
             result.length = (u64)length;
-            result.data = (char*) Arena_Alloc(arena, result.length+1, .clear_to_zero = false);
+            if (arena) {
+                result.data = (char*) Arena_Alloc(arena, result.length+1, .clear_to_zero = false);
+            } else {
+                result.data = BESTED_MALLOC(result.length+1);
+            }
             // result.data = (char*) Arena_Alloc_Clear(arena, result.length+1, false);
             if (result.data) {
                 u64 read_bytes = fread(result.data, 1, result.length, file);
@@ -2097,7 +2146,7 @@ String Read_Entire_File(Arena *arena, String filename) {
 
 
 #ifdef _WIN32
-    #error "We dont support windows currently, or at least not this one function. just delete it if you need to use the rest of this library"
+    #warning "We dont support windows currently, or at least not nanoseconds_since_unspecified_epoch(), returns a dummy value."
 #else
     #include <unistd.h>
     #include <time.h>
@@ -2119,7 +2168,8 @@ u64 nanoseconds_since_unspecified_epoch(void) {
 
     return NANOSECONDS_PER_SECOND * ts.tv_sec + ts.tv_nsec;
 #else
-    #error "Sorry, haven't implemented this yet."
+    #warning "We dont support windows currently, or at least not nanoseconds_since_unspecified_epoch(), returns a dummy value."
+    return 538008;
 #endif
 }
 

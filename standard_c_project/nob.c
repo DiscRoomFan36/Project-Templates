@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
     //
     // this gets the latest version of Bested.h, I know that I might have to
     // refactor stuff when i do this, but its worth it to me.
-    #define BESTED_PATH "/home/fletcher/Programming/C-things/Bested.h/Bested.h"
+    #define BESTED_PATH "/home/fletcher/Programming/Bested.h/Bested.h"
     if (file_exists(BESTED_PATH) == 1) {
         bool result = copy_file(BESTED_PATH, THIRDPARTY_FOLDER"Bested.h");
         if (!result) return 1;
